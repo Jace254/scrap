@@ -29,20 +29,42 @@ use winapi::{
     IDXGIResource,
     DXGI_RESOURCE_PRIORITY_MAXIMUM,
     D3D11_CPU_ACCESS_READ,
-    D3D11_USAGE_STAGING
+    D3D11_USAGE_STAGING,
+    DXGI_OUTDUPL_POINTER_SHAPE_INFO,
+    DXGI_OUTDUPL_FRAME_INFO,
+    DXGI_OUTDUPL_POINTER_SHAPE_TYPE,
+    DXGI_OUTDUPL_POINTER_SHAPE_TYPE_COLOR,
+    DXGI_OUTDUPL_POINTER_SHAPE_TYPE_MASKED_COLOR,
+    DXGI_OUTDUPL_POINTER_SHAPE_TYPE_MONOCHROME
 };
 
 mod ffi;
 
-//TODO: Split up into files.
+#[repr(C)]
+struct CursorInfo {
+    position: (i32, i32),
+    shape: Vec<u8>,
+    shape_info: DXGI_OUTDUPL_POINTER_SHAPE_INFO,
+    visible: bool,
+    who_updated_position_last: u32,
+    last_time_stamp: i64,
+}
 
 pub struct Capturer {
     device: *mut ID3D11Device,
     context: *mut ID3D11DeviceContext,
     duplication: *mut IDXGIOutputDuplication,
-    fastlane: bool, surface: *mut IDXGISurface,
-    data: *mut u8, len: usize,
+    cursor_info: CursorInfo,
+    fastlane: bool,
+    surface: *mut IDXGISurface,
+    data: *mut u8,
+    len: usize,
     height: usize,
+    width: usize,
+    output_number: u32,
+    offset_x: i32,
+    offset_y: i32,
+    desc: DXGI_OUTPUT_DESC,
 }
 
 impl Capturer {
@@ -56,17 +78,16 @@ impl Capturer {
             D3D11CreateDevice(
                 &mut **display.adapter,
                 D3D_DRIVER_TYPE_UNKNOWN,
-                ptr::null_mut(), // No software rasterizer.
-                0, // No device flags.
-                ptr::null_mut(), // Feature levels.
-                0, // Feature levels' length.
+                ptr::null_mut(),
+                0,
+                ptr::null_mut(),
+                0,
                 D3D11_SDK_VERSION,
                 &mut device,
                 &mut D3D_FEATURE_LEVEL_9_1,
                 &mut context
             )
         } != S_OK {
-            // Unknown error.
             return Err(io::ErrorKind::Other.into());
         }
 
@@ -91,12 +112,27 @@ impl Capturer {
 
         Ok(unsafe {
             let mut capturer = Capturer {
-                device, context, duplication,
+                device,
+                context,
+                duplication,
                 fastlane: desc.DesktopImageInSystemMemory == TRUE,
                 surface: ptr::null_mut(),
                 height: display.height() as usize,
+                width: display.width() as usize,
                 data: ptr::null_mut(),
-                len: 0
+                len: 0,
+                cursor_info: CursorInfo {
+                    position: (0, 0),
+                    shape: Vec::new(),
+                    shape_info: mem::uninitialized(),
+                    visible: false,
+                    who_updated_position_last: 0,
+                    last_time_stamp: 0,
+                },
+                output_number: 0, // Initialize this properly
+                offset_x: 0, // Initialize this properly
+                offset_y: 0, // Initialize this properly
+                desc: display.desc.clone(),
             };
             let _ = capturer.load_frame(0);
             capturer
@@ -105,7 +141,7 @@ impl Capturer {
 
     unsafe fn load_frame(&mut self, timeout: UINT) -> io::Result<()> {
         let mut frame = ptr::null_mut();
-        let mut info = mem::uninitialized();
+        let mut info: DXGI_OUTDUPL_FRAME_INFO = mem::uninitialized();
         self.data = ptr::null_mut();
 
         wrap_hresult((*self.duplication).AcquireNextFrame(
@@ -113,6 +149,43 @@ impl Capturer {
             &mut info,
             &mut frame
         ))?;
+
+        let mouse_update_time = info.LastMouseUpdateTime;
+        if mouse_update_time != 0 {
+            let update_position = if info.PointerPosition.Visible == 0 && self.cursor_info.who_updated_position_last != self.output_number {
+                false
+            } else if info.PointerPosition.Visible != 0 && self.cursor_info.visible && 
+                      self.cursor_info.who_updated_position_last != self.output_number && 
+                      self.cursor_info.last_time_stamp > mouse_update_time {
+                false
+            } else {
+                true
+            };
+
+            // update cursor position
+            if update_position {
+                self.cursor_info.position = (
+                    info.PointerPosition.Position.x + self.desc.DesktopCoordinates.left - self.offset_x,
+                    info.PointerPosition.Position.y + self.desc.DesktopCoordinates.top - self.offset_y
+                );
+                self.cursor_info.who_updated_position_last = self.output_number;
+                self.cursor_info.last_time_stamp = mouse_update_time;
+                self.cursor_info.visible = info.PointerPosition.Visible != 0;
+            }
+
+            if info.PointerShapeBufferSize != 0 {
+                if info.PointerShapeBufferSize > self.cursor_info.shape.len() as u32 {
+                    self.cursor_info.shape.resize(info.PointerShapeBufferSize as usize, 0);
+                }
+                let mut shape_size = 0;
+                wrap_hresult((*self.duplication).GetFramePointerShape(
+                    info.PointerShapeBufferSize,
+                    self.cursor_info.shape.as_mut_ptr() as *mut _,
+                    &mut shape_size,
+                    &mut self.cursor_info.shape_info,
+                ))?;
+            }
+        }
 
         if self.fastlane {
             let mut rect = mem::uninitialized();
@@ -198,10 +271,6 @@ impl Capturer {
 
     pub fn frame<'a>(&'a mut self, timeout: UINT) -> io::Result<&'a [u8]> {
         unsafe {
-            // Release last frame.
-            // No error checking needed because we don't care.
-            // None of the errors crash anyway.
-
             if self.fastlane {
                 (*self.duplication).UnMapDesktopSurface();
             } else {
@@ -214,12 +283,122 @@ impl Capturer {
 
             (*self.duplication).ReleaseFrame();
 
-            // Get next frame.
-
             self.load_frame(timeout)?;
+            let frame = slice::from_raw_parts_mut(self.data, self.len);
+
+            if self.cursor_info.visible {
+                self.draw_cursor(frame);
+            }
             Ok(slice::from_raw_parts(self.data, self.len))
         }
     }
+
+    fn draw_cursor(&self, frame: &mut [u8]) {
+        let (cursor_x, cursor_y) = self.cursor_info.position;
+        let bytes_per_pixel = 4; // Assuming BGRA format
+        let cursor_width = self.cursor_info.shape_info.Width as i32;
+        let cursor_height = self.cursor_info.shape_info.Height as i32;
+        let cursor_pitch = self.cursor_info.shape_info.Pitch as usize;
+        let cursor_type = self.cursor_info.shape_info.Type;
+        let frame_width = self.width as i32;
+        let frame_height = self.height as i32;
+        let shape_len = self.cursor_info.shape.len();
+        
+        let (hot_x, hot_y) = (
+            self.cursor_info.shape_info.HotSpot.x as i32,
+            self.cursor_info.shape_info.HotSpot.y as i32
+        );
+    
+        for y in 0..cursor_height {
+            for x in 0..cursor_width {
+                let frame_x = cursor_x + x - hot_x;
+                let frame_y = cursor_y + y - hot_y;
+    
+                if frame_x >= 0 && frame_y >= 0 && frame_x < frame_width && frame_y < frame_height {
+                    let frame_index = (frame_y as usize * self.width + frame_x as usize) * bytes_per_pixel;
+                    if frame_index + 3 < frame.len() {
+                        let cursor_index = y as usize * cursor_pitch + x as usize * 4; // 4 bytes per pixel for color cursors
+    
+                        if cursor_index + 3 < shape_len {
+                            match DXGI_OUTDUPL_POINTER_SHAPE_TYPE(cursor_type) {
+                                DXGI_OUTDUPL_POINTER_SHAPE_TYPE_COLOR => {
+                                    self.draw_color_cursor(frame, frame_index, cursor_index);
+                                },
+                                DXGI_OUTDUPL_POINTER_SHAPE_TYPE_MONOCHROME => {
+                                    self.draw_monochrome_cursor(frame, frame_index, cursor_index, x);
+                                },
+                                DXGI_OUTDUPL_POINTER_SHAPE_TYPE_MASKED_COLOR => {
+                                    self.draw_masked_color_cursor(frame, frame_index, cursor_index);
+                                },
+                                _ => {} // Unknown cursor type
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    fn draw_color_cursor(&self, frame: &mut [u8], frame_index: usize, cursor_index: usize) {
+        if cursor_index + 3 < self.cursor_info.shape.len() {
+            let alpha = self.cursor_info.shape[cursor_index + 3] as u16;
+            if alpha > 0 {
+                for i in 0..3 {
+                    if frame_index + i < frame.len() && cursor_index + i < self.cursor_info.shape.len() {
+                        let cursor_color = self.cursor_info.shape[cursor_index + i] as u16;
+                        let frame_color = frame[frame_index + i] as u16;
+                        frame[frame_index + i] = ((alpha * cursor_color + (255 - alpha) * frame_color) / 255) as u8;
+                    }
+                }
+                if frame_index + 3 < frame.len() {
+                    frame[frame_index + 3] = 255; // Full opacity
+                }
+            }
+        }
+    }
+    
+    fn draw_monochrome_cursor(&self, frame: &mut [u8], frame_index: usize, cursor_index: usize, x: i32) {
+        let byte_index = cursor_index / 8;
+        let bit_index = 7 - (x % 8) as usize;
+        if byte_index < self.cursor_info.shape.len() && byte_index + (self.cursor_info.shape_info.Height as usize / 2) < self.cursor_info.shape.len() {
+            let and_mask = (self.cursor_info.shape[byte_index] >> bit_index) & 1;
+            let xor_mask = (self.cursor_info.shape[byte_index + (self.cursor_info.shape_info.Height as usize / 2)] >> bit_index) & 1;
+    
+            if and_mask == 0 && xor_mask == 1 {
+                // Invert the pixel
+                for i in 0..3 {
+                    if frame_index + i < frame.len() {
+                        frame[frame_index + i] = 255 - frame[frame_index + i];
+                    }
+                }
+            } else if and_mask == 0 && xor_mask == 0 {
+                // Make the pixel black
+                for i in 0..3 {
+                    if frame_index + i < frame.len() {
+                        frame[frame_index + i] = 0;
+                    }
+                }
+            }
+        }
+    }
+    
+    fn draw_masked_color_cursor(&self, frame: &mut [u8], frame_index: usize, cursor_index: usize) {
+        if cursor_index + 3 < self.cursor_info.shape.len() {
+            let alpha = self.cursor_info.shape[cursor_index + 3] as u16;
+            if alpha > 0 {
+                for i in 0..3 {
+                    if frame_index + i < frame.len() && cursor_index + i < self.cursor_info.shape.len() {
+                        if self.cursor_info.shape[cursor_index + i] > 0 {
+                            frame[frame_index + i] = self.cursor_info.shape[cursor_index + i];
+                        }
+                    }
+                }
+                if frame_index + 3 < frame.len() {
+                    frame[frame_index + 3] = 255; // Full opacity
+                }
+            }
+        }
+    }    
 }
 
 impl Drop for Capturer {
