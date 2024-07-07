@@ -1,11 +1,11 @@
 extern crate scrap;
 
-fn main() {
-    use scrap::{Capturer, Display};
-    use std::io::Write;
-    use std::io::ErrorKind::WouldBlock;
-    use std::process::{Command, Stdio};
+use scrap::{Capturer, Display};
+use std::io::Write;
+use std::io::ErrorKind::WouldBlock;
+use std::process::{Command, Stdio};
 
+fn main() {
     let d = Display::primary().unwrap();
     let (w, h) = (d.width(), d.height());
 
@@ -22,9 +22,15 @@ fn main() {
         .expect("This example requires ffplay.");
 
     #[cfg(windows)]
-    let mut capturer = Capturer::new(d, false).unwrap();
+    let mut capturer = match Capturer::new(d, true) {
+        Ok(c) => c,
+        Err(e) => {
+            println!("Encountered error: {:?}", e);
+            return;
+        }
+    };
     #[cfg(not(windows))]
-    let mut capturer = Capturer::new(d).unwrap();
+    let mut capturer = Capturer::new(d).expect("Couldn't begin capture.");
     let mut out = child.stdin.unwrap();
 
     loop {
