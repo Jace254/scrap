@@ -19,8 +19,8 @@ struct Capturer; /// A recording instance.
 impl Capturer {
     /// Begin recording.
     pub fn new(display: Display) -> io::Result<Capturer>;
-    
-    [cfg(platform = "windows")]
+
+    #[cfg(platform = "windows")]
     pub fn new(display: Display, capture_mouse: bool) -> io::Result<Capturer>;
 
     /// Try to get a frame.
