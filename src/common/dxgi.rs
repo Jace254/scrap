@@ -9,10 +9,10 @@ pub struct Capturer {
 }
 
 impl Capturer {
-    pub fn new(display: Display) -> io::Result<Capturer> {
+    pub fn new(display: Display, capture_mouse: bool) -> io::Result<Capturer> {
         let width = display.width();
         let height = display.height();
-        let inner = dxgi::Capturer::new(&display.0, false)?;
+        let inner = dxgi::Capturer::new(&display.0, capture_mouse)?;
         Ok(Capturer { inner, width, height })
     }
 
