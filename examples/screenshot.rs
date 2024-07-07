@@ -13,7 +13,7 @@ fn main() {
 
     let display = Display::primary().expect("Couldn't find primary display.");
     #[cfg(windows)]
-    let mut capturer = Capturer::new(display, false).expect("Couldn't begin capture.");
+    let mut capturer = Capturer::new(display, true).expect("Couldn't begin capture.");
     #[cfg(not(windows))]
     let mut capturer = Capturer::new(display).expect("Couldn't begin capture.");
     let (w, h) = (capturer.width(), capturer.height());
