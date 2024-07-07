@@ -21,7 +21,10 @@ fn main() {
         .spawn()
         .expect("This example requires ffplay.");
 
+    #[cfg(windows)]
     let mut capturer = Capturer::new(d, false).unwrap();
+    #[cfg(not(windows))]
+    let mut capturer = Capturer::new(d).unwrap();
     let mut out = child.stdin.unwrap();
 
     loop {
