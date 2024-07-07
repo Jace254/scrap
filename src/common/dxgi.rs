@@ -12,7 +12,7 @@ impl Capturer {
     pub fn new(display: Display) -> io::Result<Capturer> {
         let width = display.width();
         let height = display.height();
-        let inner = dxgi::Capturer::new(&display.0)?;
+        let inner = dxgi::Capturer::new(&display.0, false)?;
         Ok(Capturer { inner, width, height })
     }
 

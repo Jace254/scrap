@@ -54,6 +54,7 @@ pub struct Capturer {
     device: *mut ID3D11Device,
     context: *mut ID3D11DeviceContext,
     duplication: *mut IDXGIOutputDuplication,
+    capture_mouse: bool,
     cursor_info: CursorInfo,
     fastlane: bool,
     surface: *mut IDXGISurface,
@@ -68,7 +69,7 @@ pub struct Capturer {
 }
 
 impl Capturer {
-    pub fn new(display: &Display) -> io::Result<Capturer> {
+    pub fn new(display: &Display, capture_mouse: bool) -> io::Result<Capturer> {
         let mut device = ptr::null_mut();
         let mut context = ptr::null_mut();
         let mut duplication = ptr::null_mut();
@@ -121,6 +122,7 @@ impl Capturer {
                 width: display.width() as usize,
                 data: ptr::null_mut(),
                 len: 0,
+                capture_mouse: capture_mouse,
                 cursor_info: CursorInfo {
                     position: (0, 0),
                     shape: Vec::new(),
@@ -150,42 +152,45 @@ impl Capturer {
             &mut frame
         ))?;
 
-        let mouse_update_time = info.LastMouseUpdateTime;
-        if mouse_update_time != 0 {
-            let update_position = if info.PointerPosition.Visible == 0 && self.cursor_info.who_updated_position_last != self.output_number {
-                false
-            } else if info.PointerPosition.Visible != 0 && self.cursor_info.visible && 
-                      self.cursor_info.who_updated_position_last != self.output_number && 
-                      self.cursor_info.last_time_stamp > mouse_update_time {
-                false
-            } else {
-                true
-            };
-
-            // update cursor position
-            if update_position {
-                self.cursor_info.position = (
-                    info.PointerPosition.Position.x + self.desc.DesktopCoordinates.left - self.offset_x,
-                    info.PointerPosition.Position.y + self.desc.DesktopCoordinates.top - self.offset_y
-                );
-                self.cursor_info.who_updated_position_last = self.output_number;
-                self.cursor_info.last_time_stamp = mouse_update_time;
-                self.cursor_info.visible = info.PointerPosition.Visible != 0;
-            }
-
-            if info.PointerShapeBufferSize != 0 {
-                if info.PointerShapeBufferSize > self.cursor_info.shape.len() as u32 {
-                    self.cursor_info.shape.resize(info.PointerShapeBufferSize as usize, 0);
+        if self.capture_mouse {
+            let mouse_update_time = info.LastMouseUpdateTime;
+            if mouse_update_time != 0 {
+                let update_position = if info.PointerPosition.Visible == 0 && self.cursor_info.who_updated_position_last != self.output_number {
+                    false
+                } else if info.PointerPosition.Visible != 0 && self.cursor_info.visible && 
+                          self.cursor_info.who_updated_position_last != self.output_number && 
+                          self.cursor_info.last_time_stamp > mouse_update_time {
+                    false
+                } else {
+                    true
+                };
+    
+                // update cursor position
+                if update_position {
+                    self.cursor_info.position = (
+                        info.PointerPosition.Position.x + self.desc.DesktopCoordinates.left - self.offset_x,
+                        info.PointerPosition.Position.y + self.desc.DesktopCoordinates.top - self.offset_y
+                    );
+                    self.cursor_info.who_updated_position_last = self.output_number;
+                    self.cursor_info.last_time_stamp = mouse_update_time;
+                    self.cursor_info.visible = info.PointerPosition.Visible != 0;
                 }
-                let mut shape_size = 0;
-                wrap_hresult((*self.duplication).GetFramePointerShape(
-                    info.PointerShapeBufferSize,
-                    self.cursor_info.shape.as_mut_ptr() as *mut _,
-                    &mut shape_size,
-                    &mut self.cursor_info.shape_info,
-                ))?;
+    
+                if info.PointerShapeBufferSize != 0 {
+                    if info.PointerShapeBufferSize > self.cursor_info.shape.len() as u32 {
+                        self.cursor_info.shape.resize(info.PointerShapeBufferSize as usize, 0);
+                    }
+                    let mut shape_size = 0;
+                    wrap_hresult((*self.duplication).GetFramePointerShape(
+                        info.PointerShapeBufferSize,
+                        self.cursor_info.shape.as_mut_ptr() as *mut _,
+                        &mut shape_size,
+                        &mut self.cursor_info.shape_info,
+                    ))?;
+                }
             }
         }
+        
 
         if self.fastlane {
             let mut rect = mem::uninitialized();
@@ -286,7 +291,7 @@ impl Capturer {
             self.load_frame(timeout)?;
             let frame = slice::from_raw_parts_mut(self.data, self.len);
 
-            if self.cursor_info.visible {
+            if self.capture_mouse && self.cursor_info.visible  {
                 self.draw_cursor(frame);
             }
             Ok(slice::from_raw_parts(self.data, self.len))
