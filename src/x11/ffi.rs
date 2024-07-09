@@ -2,50 +2,32 @@
 
 use libc::c_void;
 
-#[link(name="xcb")]
-#[link(name="xcb-shm")]
-#[link(name="xcb-randr")]
-extern {
-    pub fn xcb_connect(
-        displayname: *const i8,
-        screenp: *mut i32
-    ) -> *mut xcb_connection_t;
+#[link(name = "xcb")]
+#[link(name = "xcb-shm")]
+#[link(name = "xcb-randr")]
+extern "C" {
+    pub fn xcb_connect(displayname: *const i8, screenp: *mut i32) -> *mut xcb_connection_t;
 
-    pub fn xcb_disconnect(
-        c: *mut xcb_connection_t
-    );
+    pub fn xcb_disconnect(c: *mut xcb_connection_t);
 
-    pub fn xcb_connection_has_error(
-        c: *mut xcb_connection_t
-    ) -> i32;
+    pub fn xcb_connection_has_error(c: *mut xcb_connection_t) -> i32;
 
-    pub fn xcb_get_setup(
-        c: *mut xcb_connection_t
-    ) -> *const xcb_setup_t;
+    pub fn xcb_get_setup(c: *mut xcb_connection_t) -> *const xcb_setup_t;
 
-    pub fn xcb_setup_roots_iterator(
-        r: *const xcb_setup_t
-    ) -> xcb_screen_iterator_t;
+    pub fn xcb_setup_roots_iterator(r: *const xcb_setup_t) -> xcb_screen_iterator_t;
 
-    pub fn xcb_screen_next(
-        i: *mut xcb_screen_iterator_t
-    );
+    pub fn xcb_screen_next(i: *mut xcb_screen_iterator_t);
 
-    pub fn xcb_generate_id(
-        c: *mut xcb_connection_t
-    ) -> u32;
+    pub fn xcb_generate_id(c: *mut xcb_connection_t) -> u32;
 
     pub fn xcb_shm_attach(
         c: *mut xcb_connection_t,
         shmseg: xcb_shm_seg_t,
         shmid: u32,
-        read_only: u8
+        read_only: u8,
     ) -> xcb_void_cookie_t;
 
-    pub fn xcb_shm_detach(
-        c: *mut xcb_connection_t,
-        shmseg: xcb_shm_seg_t
-    ) -> xcb_void_cookie_t;
+    pub fn xcb_shm_detach(c: *mut xcb_connection_t, shmseg: xcb_shm_seg_t) -> xcb_void_cookie_t;
 
     pub fn xcb_shm_get_image_unchecked(
         c: *mut xcb_connection_t,
@@ -57,13 +39,13 @@ extern {
         plane_mask: u32,
         format: u8,
         shmseg: xcb_shm_seg_t,
-        offset: u32
+        offset: u32,
     ) -> xcb_shm_get_image_cookie_t;
 
     pub fn xcb_shm_get_image_reply(
         c: *mut xcb_connection_t,
         cookie: xcb_shm_get_image_cookie_t,
-        e: *mut *mut xcb_generic_error_t
+        e: *mut *mut xcb_generic_error_t,
     ) -> *mut xcb_shm_get_image_reply_t;
 
     pub fn xcb_randr_get_monitors_unchecked(
@@ -82,9 +64,7 @@ extern {
         r: *const xcb_randr_get_monitors_reply_t,
     ) -> xcb_randr_monitor_info_iterator_t;
 
-    pub fn xcb_randr_monitor_info_next(
-        i: *mut xcb_randr_monitor_info_iterator_t,
-    );
+    pub fn xcb_randr_monitor_info_next(i: *mut xcb_randr_monitor_info_iterator_t);
 }
 
 pub const XCB_IMAGE_FORMAT_Z_PIXMAP: u8 = 2;
@@ -120,14 +100,14 @@ pub struct xcb_setup_t {
     pub bitmap_format_scanline_pad: u8,
     pub min_keycode: xcb_keycode_t,
     pub max_keycode: xcb_keycode_t,
-    pub pad1: [u8; 4]
+    pub pad1: [u8; 4],
 }
 
 #[repr(C)]
 pub struct xcb_screen_iterator_t {
     pub data: *mut xcb_screen_t,
     pub rem: i32,
-    pub index: i32
+    pub index: i32,
 }
 
 #[repr(C)]
@@ -147,7 +127,7 @@ pub struct xcb_screen_t {
     pub backing_stores: u8,
     pub save_unders: u8,
     pub root_depth: u8,
-    pub allowed_depths_len: u8
+    pub allowed_depths_len: u8,
 }
 
 #[repr(C)]
@@ -174,19 +154,19 @@ pub struct xcb_randr_monitor_info_t {
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct xcb_randr_get_monitors_cookie_t {
-    pub sequence: u32
+    pub sequence: u32,
 }
 
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct xcb_shm_get_image_cookie_t {
-    pub sequence: u32
+    pub sequence: u32,
 }
 
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct xcb_void_cookie_t {
-    pub sequence: u32
+    pub sequence: u32,
 }
 
 #[repr(C)]
@@ -199,7 +179,7 @@ pub struct xcb_generic_error_t {
     pub major_code: u8,
     pub pad0: u8,
     pub pad: [u32; 5],
-    pub full_sequence: u32
+    pub full_sequence: u32,
 }
 
 #[repr(C)]
@@ -209,7 +189,7 @@ pub struct xcb_shm_get_image_reply_t {
     pub sequence: u16,
     pub length: u32,
     pub visual: xcb_visualid_t,
-    pub size: u32
+    pub size: u32,
 }
 
 #[repr(C)]

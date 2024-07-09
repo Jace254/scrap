@@ -1,11 +1,11 @@
 use quartz;
-use std::{io, ops, mem};
 use std::marker::PhantomData;
 use std::sync::{Arc, Mutex, TryLockError};
+use std::{io, mem, ops};
 
 pub struct Capturer {
     inner: quartz::Capturer,
-    frame: Arc<Mutex<Option<quartz::Frame>>>
+    frame: Arc<Mutex<Option<quartz::Frame>>>,
 }
 
 impl Capturer {
@@ -23,8 +23,9 @@ impl Capturer {
                 if let Ok(mut f) = f.lock() {
                     *f = Some(inner);
                 }
-            }
-        ).map_err(|_| io::Error::from(io::ErrorKind::Other))?;
+            },
+        )
+        .map_err(|_| io::Error::from(io::ErrorKind::Other))?;
 
         Ok(Capturer { inner, frame })
     }
@@ -44,27 +45,20 @@ impl Capturer {
                 mem::swap(&mut frame, &mut handle);
 
                 match frame {
-                    Some(frame) =>
-                        Ok(Frame(frame, PhantomData)),
+                    Some(frame) => Ok(Frame(frame, PhantomData)),
 
-                    None =>
-                        Err(io::ErrorKind::WouldBlock.into())
+                    None => Err(io::ErrorKind::WouldBlock.into()),
                 }
             }
 
-            Err(TryLockError::WouldBlock) =>
-                Err(io::ErrorKind::WouldBlock.into()),
+            Err(TryLockError::WouldBlock) => Err(io::ErrorKind::WouldBlock.into()),
 
-            Err(TryLockError::Poisoned(..)) =>
-                Err(io::ErrorKind::Other.into())
+            Err(TryLockError::Poisoned(..)) => Err(io::ErrorKind::Other.into()),
         }
     }
 }
 
-pub struct Frame<'a>(
-    quartz::Frame,
-    PhantomData<&'a [u8]>
-);
+pub struct Frame<'a>(quartz::Frame, PhantomData<&'a [u8]>);
 
 impl<'a> ops::Deref for Frame<'a> {
     type Target = [u8];
@@ -81,13 +75,11 @@ impl Display {
     }
 
     pub fn all() -> io::Result<Vec<Display>> {
-        Ok(
-            quartz::Display::online()
-                .map_err(|_| io::Error::from(io::ErrorKind::Other))?
-                .into_iter()
-                .map(Display)
-                .collect()
-        )
+        Ok(quartz::Display::online()
+            .map_err(|_| io::Error::from(io::ErrorKind::Other))?
+            .into_iter()
+            .map(Display)
+            .collect())
     }
 
     pub fn width(&self) -> usize {

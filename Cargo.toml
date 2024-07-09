@@ -12,7 +12,7 @@ authors = ["Ram <quadrupleslap@gmail.com>"]
 block = "0.1"
 cfg-if = "0.1"
 libc = "0.2"
-winapi = "0.2"
+winapi = {version="0.3", features=["dxgi", "dxgi1_2" , "d3dcommon", "d3d11", "winerror" ]}
 
 [dev-dependencies]
 repng = "0.2"

@@ -1,8 +1,8 @@
 extern crate scrap;
 
 use scrap::{Capturer, Display};
-use std::io::Write;
 use std::io::ErrorKind::WouldBlock;
+use std::io::Write;
 use std::process::{Command, Stdio};
 
 fn main() {
@@ -11,11 +11,15 @@ fn main() {
 
     let child = Command::new("ffplay")
         .args(&[
-            "-f", "rawvideo",
-            "-pixel_format", "bgr0",
-            "-video_size", &format!("{}x{}", w, h),
-            "-framerate", "60",
-            "-"
+            "-f",
+            "rawvideo",
+            "-pixel_format",
+            "bgr0",
+            "-video_size",
+            &format!("{}x{}", w, h),
+            "-framerate",
+            "60",
+            "-",
         ])
         .stdin(Stdio::piped())
         .spawn()
